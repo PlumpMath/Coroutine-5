@@ -34,7 +34,7 @@ Coroutine::Coroutine(const Function& func, std::size_t  size) : m_id( ++ s_id),
 
     m_handle.uc_stack.ss_sp   = &m_stack[0];
     m_handle.uc_stack.ss_size = m_stack.size();
-    m_handle.uc_link = 0;//&s_main.m_handle;
+    m_handle.uc_link = 0;
 
     ::makecontext(&m_handle, reinterpret_cast<void (*)(void)>(&Coroutine::_Run), 1, this);
 
@@ -76,7 +76,7 @@ Coroutine::Params*  Coroutine::_SwitchTo(Coroutine* pCrt, Coroutine::Params* par
 #if defined(__gnu_linux__)
     int ret = ::swapcontext(&m_handle, &pCrt->m_handle);
     if (ret != 0) {
-        perror("swapcontext");
+        perror("FATAL ERROR: swapcontext");
     }
 
 #else
@@ -181,14 +181,6 @@ CoroutineMgr::~CoroutineMgr()
 ////////////////////////////////////
 // test function for coroutine
 ////////////////////////////////////
-
-#if defined(__gnu_linux__)
-using namespace boost;
-
-#else
-using namespace std::tr1;
-
-#endif
 
 void  Run1(const Coroutine::Params& inParams, Coroutine::Params& outParams)
 {
