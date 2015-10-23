@@ -6,19 +6,17 @@
 
 #if defined(__gnu_linux__)
 #include <ucontext.h>
-#include <boost/smart_ptr/shared_ptr.hpp>
-#include <boost/function.hpp>
 
 #else   // windows
 #include <Windows.h>
-#include <memory>
-#include <functional>
 #undef    Yield // cancel the windows macro
 
 #endif
 
 #include <vector>
 #include <map>
+#include <memory>
+#include <functional>
 
 class  Coroutine
 {
@@ -32,14 +30,8 @@ class  Coroutine
     };
 
 public:
-#if defined(__gnu_linux__)
-    typedef  std::vector<boost::shared_ptr<void> >  Params;
-    typedef  boost::function<void (const Params& inParam, Params& outParam)>  Function;
-
-#else
-    typedef  std::vector<std::tr1::shared_ptr<void> >  Params;
-    typedef  std::tr1::function<void (const Params& inParam, Params& outParam)>  Function;
-#endif
+    typedef  std::vector<std::shared_ptr<void> >  Params;
+    typedef  std::function<void (const Params& inParam, Params& outParam)>  Function;
 
     ~Coroutine();
 
@@ -77,13 +69,7 @@ private:
     static unsigned int     s_id;
 };
 
-#if defined(__gnu_linux__)
-typedef boost::shared_ptr<Coroutine>        CoroutinePtr;
-
-#else
-typedef std::tr1::shared_ptr<Coroutine>     CoroutinePtr;
-
-#endif
+typedef std::shared_ptr<Coroutine>     CoroutinePtr;
 
 class CoroutineMgr
 {
