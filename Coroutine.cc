@@ -8,55 +8,55 @@
 using std::cerr;
 using std::endl; // for test
 
-unsigned int Coroutine::s_id = 0;
-Coroutine    Coroutine::s_main;
-Coroutine*   Coroutine::s_current = 0;
+unsigned int Coroutine::sid_ = 0;
+Coroutine    Coroutine::main_;
+Coroutine*   Coroutine::current_ = 0;
 
 
-Coroutine::Coroutine(const Function& func, std::size_t  size) : m_id( ++ s_id),
-                                                                m_state(State_init)
+Coroutine::Coroutine(const Function& func, std::size_t  size) : id_( ++ sid_),
+                                                                state_(State_init)
                                                             #if defined(__gnu_linux__)
-                                                                ,m_stack(size ? size : kStackSize)
+                                                                ,stack_(size ? size : kDefaultStackSize)
                                                             #endif
 {
-    if (this == &s_main)
+    if (this == &main_)
     {
 #if defined(__gnu_linux__)
-        std::vector<char>().swap(m_stack);
+        std::vector<char>().swap(stack_);
 #endif
         return;
     }
 
-    if (m_id == s_main.m_id)
-        m_id = ++ s_id;  // when s_id overflow
+    if (id_ == main_.id_)
+        id_ = ++ sid_;  // when sid_ overflow
 
 #if defined(__gnu_linux__)
-    int ret = ::getcontext(&m_handle);
+    int ret = ::getcontext(&handle_);
     assert (ret == 0);
 
-    m_handle.uc_stack.ss_sp   = &m_stack[0];
-    m_handle.uc_stack.ss_size = m_stack.size();
-    m_handle.uc_link = 0;
+    handle_.uc_stack.ss_sp   = &stack_[0];
+    handle_.uc_stack.ss_size = stack_.size();
+    handle_.uc_link = 0;
 
-    ::makecontext(&m_handle, reinterpret_cast<void (*)(void)>(&Coroutine::_Run), 1, this);
+    ::makecontext(&handle_, reinterpret_cast<void (*)(void)>(&Coroutine::_Run), 1, this);
 
 #else
-    m_handle = ::CreateFiberEx(0, 0, FIBER_FLAG_FLOAT_SWITCH,
+    handle_ = ::CreateFiberEx(0, 0, FIBER_FLAG_FLOAT_SWITCH,
                                reinterpret_cast<PFIBER_START_ROUTINE>(&Coroutine::_Run), this);
 #endif
 
-    m_func  = func;
+    func_  = func;
 }
 
 Coroutine::~Coroutine()
 {
-    cerr << "delete coroutine " << m_id << endl;
+    cerr << "delete coroutine " << id_ << endl;
 
 #if !defined(__gnu_linux__)
-    if (m_handle != INVALID_HANDLE_VALUE)
+    if (handle_ != INVALID_HANDLE_VALUE)
     {
-        ::DeleteFiber(m_handle);
-        m_handle = INVALID_HANDLE_VALUE;
+        ::DeleteFiber(handle_);
+        handle_ = INVALID_HANDLE_VALUE;
     }
 #endif
 }
@@ -65,54 +65,54 @@ std::shared_ptr<void> Coroutine::_Send(Coroutine* pCrt, std::shared_ptr<void> pa
 {
     if (!pCrt)  return 0;
 
-    assert(this == s_current);
+    assert(this == current_);
     assert(this != pCrt);
 
-    s_current = pCrt;
+    current_ = pCrt;
 
     if (param) {
-        this->m_outParams = param; // set old coroutine's out param
-        pCrt->m_inParams = param;
+        this->outputParams_ = param; // set old coroutine's out param
+        pCrt->inputParams_ = param;
     }
 
 #if defined(__gnu_linux__)
-    int ret = ::swapcontext(&m_handle, &pCrt->m_handle);
+    int ret = ::swapcontext(&handle_, &pCrt->handle_);
     if (ret != 0) {
         perror("FATAL ERROR: swapcontext");
     }
 
 #else
-    ::SwitchToFiber(pCrt->m_handle);
+    ::SwitchToFiber(pCrt->handle_);
 
 #endif
 
-    return  pCrt->m_outParams;
+    return  pCrt->outputParams_;
 }
 
 std::shared_ptr<void> Coroutine::_Yield(const std::shared_ptr<void>& param)
 {
-    return _Send(&s_main, param);
+    return _Send(&main_, param);
 }
 
 void Coroutine::_Run(Coroutine* pCrt)
 {
-    assert (&Coroutine::s_main != pCrt);
-    assert (Coroutine::s_current == pCrt);
+    assert (&Coroutine::main_ != pCrt);
+    assert (Coroutine::current_ == pCrt);
 
     cerr << "\n=========== Start croutine id "
          << pCrt->GetID() << endl;
 
-    pCrt->m_state = State_running;
+    pCrt->state_ = State_running;
 
-    if (pCrt->m_func)
-        pCrt->m_func(pCrt->m_inParams, pCrt->m_outParams);
+    if (pCrt->func_)
+        pCrt->func_(pCrt->inputParams_, pCrt->outputParams_);
 
     cerr << "=========== Finish croutine id "
          << pCrt->GetID() << endl << endl;
 
-    pCrt->m_inParams.reset();
-    pCrt->m_state = State_finish;
-    pCrt->_Yield(pCrt->m_outParams);
+    pCrt->inputParams_.reset();
+    pCrt->state_ = State_finish;
+    pCrt->_Yield(pCrt->outputParams_);
 }
 
 CoroutinePtr  CoroutineMgr::CreateCoroutine(const Coroutine::Function& func) 
@@ -122,9 +122,9 @@ CoroutinePtr  CoroutineMgr::CreateCoroutine(const Coroutine::Function& func)
 
 CoroutinePtr  CoroutineMgr::_FindCoroutine(unsigned int id) const
 {
-    CoroutineMap::const_iterator  it(m_coroutines.find(id));
+    CoroutineMap::const_iterator  it(coroutines_.find(id));
 
-    if (it != m_coroutines.end())
+    if (it != coroutines_.end())
         return  it->second;
 
     return  CoroutinePtr();
@@ -132,43 +132,43 @@ CoroutinePtr  CoroutineMgr::_FindCoroutine(unsigned int id) const
 
 std::shared_ptr<void>  CoroutineMgr::Send(unsigned int id, std::shared_ptr<void> param)
 {
-    assert (id != Coroutine::s_main.m_id);
+    assert (id != Coroutine::main_.id_);
     return  Send(_FindCoroutine(id), param);
 }
 
 std::shared_ptr<void>  CoroutineMgr::Send(const CoroutinePtr& pCrt, std::shared_ptr<void> param)
 {
-    if (pCrt->m_state == Coroutine::State_finish) {
+    if (pCrt->state_ == Coroutine::State_finish) {
         throw std::runtime_error("Send to a finished coroutine.");
     }
 
-    if (!Coroutine::s_current)
+    if (!Coroutine::current_)
     {
-        Coroutine::s_current = &Coroutine::s_main;
+        Coroutine::current_ = &Coroutine::main_;
 
 #if !defined(__gnu_linux__)
-        Coroutine::s_main.m_handle = ::ConvertThreadToFiberEx(&Coroutine::s_main, FIBER_FLAG_FLOAT_SWITCH);
+        Coroutine::main_.handle_ = ::ConvertThreadToFiberEx(&Coroutine::main_, FIBER_FLAG_FLOAT_SWITCH);
 
 #endif
     }
 
-    return  Coroutine::s_current->_Send(pCrt.get(), param);
+    return  Coroutine::current_->_Send(pCrt.get(), param);
 }
 
 std::shared_ptr<void> CoroutineMgr::Yield(const std::shared_ptr<void>& param)
 {
-    return Coroutine::s_current->_Yield(param);
+    return Coroutine::current_->_Yield(param);
 }
 
 
 CoroutineMgr::~CoroutineMgr()
 {
 #if !defined(__gnu_linux__)
-    if (::GetCurrentFiber() == Coroutine::s_main.m_handle)
+    if (::GetCurrentFiber() == Coroutine::main_.handle_)
     {
         cerr << "Destroy main fiber\n";
         ::ConvertFiberToThread();
-        Coroutine::s_main.m_handle = INVALID_HANDLE_VALUE;
+        Coroutine::main_.handle_ = INVALID_HANDLE_VALUE;
     }
     else
     {

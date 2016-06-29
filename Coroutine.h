@@ -33,9 +33,11 @@ public:
     typedef  std::function<void (const std::shared_ptr<void>& inParam, std::shared_ptr<void>& outParam)>  Function;
 
     ~Coroutine();
+    Coroutine(const Coroutine&) = delete;
+    void operator=(const Coroutine&) = delete;
 
-    unsigned int GetID() const  { return  m_id; }
-    static unsigned int GetCurrentID()  {  return s_current->m_id; } 
+    unsigned int GetID() const  { return  id_; }
+    static unsigned int GetCurrentID()  {  return current_->id_; } 
 
 private:
     Coroutine(const Function& func = Function(), std::size_t size = 0);
@@ -44,31 +46,31 @@ private:
     std::shared_ptr<void> _Yield(const std::shared_ptr<void>& = std::shared_ptr<void>(nullptr));
     static void     _Run(Coroutine* cxt);
 
-    unsigned int    m_id;  // 1: main
-    int             m_state;
-    std::shared_ptr<void> m_inParams;
-    std::shared_ptr<void> m_outParams;
+    unsigned int    id_;  // 1: main
+    int             state_;
+    std::shared_ptr<void> inputParams_;
+    std::shared_ptr<void> outputParams_;
 
 #if defined(__gnu_linux__)
     typedef ucontext HANDLE;
 
-    static const std::size_t kStackSize = 8 * 1024; 
-    std::vector<char>   m_stack;
+    static const std::size_t kDefaultStackSize = 8 * 1024; 
+    std::vector<char>   stack_;
 
 #else
     typedef PVOID    HANDLE;
 
 #endif
 
-    HANDLE      m_handle;
-    Function    m_func;
+    HANDLE      handle_;
+    Function    func_;
 
-    static Coroutine        s_main;
-    static Coroutine*       s_current; 
-    static unsigned int     s_id;
+    static Coroutine        main_;
+    static Coroutine*       current_; 
+    static unsigned int     sid_;
 };
 
-typedef std::shared_ptr<Coroutine>     CoroutinePtr;
+using CoroutinePtr = std::shared_ptr<Coroutine>;
 
 class CoroutineMgr
 {
@@ -83,13 +85,11 @@ public:
 
     ~CoroutineMgr();
 
-    // TODO process timeout, recycle, etc
-
 private:
     CoroutinePtr  _FindCoroutine(unsigned int id) const;
 
     typedef std::map<unsigned int, CoroutinePtr >   CoroutineMap;
-    CoroutineMap    m_coroutines;
+    CoroutineMap    coroutines_;
 };
 
 #endif
