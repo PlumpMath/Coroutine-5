@@ -1,9 +1,12 @@
 #include <cassert>
+#include <stdexcept>
 #include <iostream>
+#include <string>
 #include "Coroutine.h"
 
 
-using namespace std; // for test
+using std::cerr;
+using std::endl; // for test
 
 unsigned int Coroutine::s_id = 0;
 Coroutine    Coroutine::s_main;
@@ -18,7 +21,6 @@ Coroutine::Coroutine(const Function& func, std::size_t  size) : m_id( ++ s_id),
 {
     if (this == &s_main)
     {
-        cerr << "No need to construct Main\n";
 #if defined(__gnu_linux__)
         std::vector<char>().swap(m_stack);
 #endif
@@ -59,7 +61,7 @@ Coroutine::~Coroutine()
 #endif
 }
 
-Coroutine::Params*  Coroutine::_SwitchTo(Coroutine* pCrt, Coroutine::Params* param)
+std::shared_ptr<void> Coroutine::_Send(Coroutine* pCrt, std::shared_ptr<void> param)
 {
     if (!pCrt)  return 0;
 
@@ -69,8 +71,8 @@ Coroutine::Params*  Coroutine::_SwitchTo(Coroutine* pCrt, Coroutine::Params* par
     s_current = pCrt;
 
     if (param) {
-        pCrt->m_inParams.swap(*param);
-        param->clear();
+        this->m_outParams = param; // set old coroutine's out param
+        pCrt->m_inParams = param;
     }
 
 #if defined(__gnu_linux__)
@@ -80,19 +82,19 @@ Coroutine::Params*  Coroutine::_SwitchTo(Coroutine* pCrt, Coroutine::Params* par
     }
 
 #else
-    ::SwitchToFiber(pCrt->m_handle);
+    ::SendFiber(pCrt->m_handle);
 
 #endif
 
-    return  &pCrt->m_outParams;
+    return  pCrt->m_outParams;
 }
 
-void  Coroutine::_Yield()
+std::shared_ptr<void> Coroutine::_Yield(const std::shared_ptr<void>& param)
 {
-    _SwitchTo(&s_main, 0);
+    return _Send(&s_main, param);
 }
 
-void   Coroutine::_Run(Coroutine* pCrt)
+void Coroutine::_Run(Coroutine* pCrt)
 {
     assert (&Coroutine::s_main != pCrt);
     assert (Coroutine::s_current == pCrt);
@@ -108,9 +110,9 @@ void   Coroutine::_Run(Coroutine* pCrt)
     cerr << "=========== Finish croutine id "
          << pCrt->GetID() << endl << endl;
 
-    pCrt->m_inParams.clear();
+    pCrt->m_inParams.reset();
     pCrt->m_state = State_finish;
-    pCrt->_Yield();
+    pCrt->_Yield(pCrt->m_outParams);
 }
 
 CoroutinePtr  CoroutineMgr::CreateCoroutine(const Coroutine::Function& func) 
@@ -128,20 +130,20 @@ CoroutinePtr  CoroutineMgr::_FindCoroutine(unsigned int id) const
     return  CoroutinePtr();
 }
 
-Coroutine::Params*  CoroutineMgr::SwitchTo(unsigned int id, Coroutine::Params*  param)
+std::shared_ptr<void>  CoroutineMgr::Send(unsigned int id, std::shared_ptr<void> param)
 {
     assert (id != Coroutine::s_main.m_id);
-    return  SwitchTo(_FindCoroutine(id), param);
+    return  Send(_FindCoroutine(id), param);
 }
 
-Coroutine::Params*  CoroutineMgr::SwitchTo(const CoroutinePtr& pCrt, Coroutine::Params*  param)
+std::shared_ptr<void>  CoroutineMgr::Send(const CoroutinePtr& pCrt, std::shared_ptr<void> param)
 {
-    if (pCrt->m_state == Coroutine::State_finish)
-        return 0;
+    if (pCrt->m_state == Coroutine::State_finish) {
+        throw std::runtime_error("Send to a finished coroutine.");
+    }
 
     if (!Coroutine::s_current)
     {
-        cerr << "Init s_current\n";
         Coroutine::s_current = &Coroutine::s_main;
 
 #if !defined(__gnu_linux__)
@@ -150,12 +152,12 @@ Coroutine::Params*  CoroutineMgr::SwitchTo(const CoroutinePtr& pCrt, Coroutine::
 #endif
     }
 
-    return  Coroutine::s_current->_SwitchTo(pCrt.get(), param);
+    return  Coroutine::s_current->_Send(pCrt.get(), param);
 }
 
-void CoroutineMgr::Yield()
+std::shared_ptr<void> CoroutineMgr::Yield(const std::shared_ptr<void>& param)
 {
-    Coroutine::s_current->_Yield();
+    return Coroutine::s_current->_Yield(param);
 }
 
 
@@ -174,92 +176,5 @@ CoroutineMgr::~CoroutineMgr()
     }
 
 #endif
-}
-
-
-
-////////////////////////////////////
-// test function for coroutine
-////////////////////////////////////
-
-void  Run1(const Coroutine::Params& inParams, Coroutine::Params& outParams)
-{
-    cerr << Coroutine::GetCurrentID() << " Enter Run1\n" ;
-
-    for (Coroutine::Params::const_iterator it(inParams.begin());
-        it != inParams.end();
-        ++ it)
-    {
-        cerr << Coroutine::GetCurrentID()
-            << " input params "
-            << *(int*)it->get()
-            << endl;
-    }
-
-    outParams.push_back(shared_ptr<int>(new int(1)));
-
-    cerr << Coroutine::GetCurrentID() << " From Run1, return to Main\n";
-    CoroutineMgr::Yield();
-
-    cerr << Coroutine::GetCurrentID() << " Resume Run1, from Main\n";
-    for (Coroutine::Params::const_iterator it(inParams.begin());
-        it != inParams.end();
-        ++ it)
-    {
-        cerr << Coroutine::GetCurrentID()
-            << " resume params "
-            << *(int*)it->get()
-            << endl;
-    }
-
-    cerr << Coroutine::GetCurrentID() << " Exit Run1\n";
-}
-
-void  Run2(const Coroutine::Params& inParams, Coroutine::Params& outParam)
-{
-    cerr << Coroutine::GetCurrentID() << " Enter Run2\n" ;
-
-    for (Coroutine::Params::const_iterator it(inParams.begin());
-        it != inParams.end();
-        ++ it)
-    {
-        cerr << Coroutine::GetCurrentID()
-            << " input params "
-            << *(int*)it->get()
-            << endl;
-    }
-
-    outParam.push_back(shared_ptr<int>(new int(2)));
-
-    cerr << Coroutine::GetCurrentID() << " Exit Run2\n";
-}
-
-
-int main()
-{
-    cerr << " begin main\n";
-
-    //0. define CoroutineMgr object for each thread.
-    CoroutineMgr   mgr;
-
-    //1. create coroutine
-    CoroutinePtr  crt1(mgr.CreateCoroutine(Run1));
-    CoroutinePtr  crt2(mgr.CreateCoroutine(Run2));
-
-    //2. prepare params
-    Coroutine::Params  params;
-    params.push_back(shared_ptr<int>(new int(-1)));
-    params.push_back(shared_ptr<int>(new int(-2)));
-
-    //3. jump to crt1, get result from crt1
-    Coroutine::Params* pRet = mgr.SwitchTo(crt1, &params);
-
-    //4. jump to crt2, pass crt1's result
-    pRet = mgr.SwitchTo(crt2, pRet);
-
-    //5. return to crt1, pass crt2's result
-    (void)mgr.SwitchTo(crt1, pRet);
-
-    cerr << "BYE BYE\n";
 }
 

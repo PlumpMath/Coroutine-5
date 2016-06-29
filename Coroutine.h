@@ -2,7 +2,7 @@
 #define BERT_COROUTINE_H
 
 // Only linux & windows
-// If you use coroutine with multi threads, you must declare a coroutine mgr for each thread, don't mix!
+// If you use coroutine with multi threads, you must declare a coroutine mgr for each thread
 
 #if defined(__gnu_linux__)
 #include <ucontext.h>
@@ -30,25 +30,24 @@ class  Coroutine
     };
 
 public:
-    typedef  std::vector<std::shared_ptr<void> >  Params;
-    typedef  std::function<void (const Params& inParam, Params& outParam)>  Function;
+    typedef  std::function<void (const std::shared_ptr<void>& inParam, std::shared_ptr<void>& outParam)>  Function;
 
     ~Coroutine();
 
-    unsigned int    GetID() const  { return  m_id; }
+    unsigned int GetID() const  { return  m_id; }
     static unsigned int GetCurrentID()  {  return s_current->m_id; } 
 
 private:
     Coroutine(const Function& func = Function(), std::size_t size = 0);
 
-    Params*         _SwitchTo(Coroutine* pCrt, Params*  inParam = 0);
-    void            _Yield();
+    std::shared_ptr<void> _Send(Coroutine* pCrt, std::shared_ptr<void> inParam = std::shared_ptr<void>(nullptr));
+    std::shared_ptr<void> _Yield(const std::shared_ptr<void>& = std::shared_ptr<void>(nullptr));
     static void     _Run(Coroutine* cxt);
 
-    unsigned int    m_id;  // 1:main
+    unsigned int    m_id;  // 1: main
     int             m_state;
-    Params          m_inParams;
-    Params          m_outParams;
+    std::shared_ptr<void> m_inParams;
+    std::shared_ptr<void> m_outParams;
 
 #if defined(__gnu_linux__)
     typedef ucontext HANDLE;
@@ -74,11 +73,13 @@ typedef std::shared_ptr<Coroutine>     CoroutinePtr;
 class CoroutineMgr
 {
 public:
+    // works like python decorator: convert the func to a coroutine
     static CoroutinePtr     CreateCoroutine(const Coroutine::Function& func);
 
-    Coroutine::Params*      SwitchTo(unsigned int id, Coroutine::Params*  param = 0);
-    Coroutine::Params*      SwitchTo(const CoroutinePtr& pCrt, Coroutine::Params*  param = 0);
-    static void             Yield();
+    // like python generator's send method
+    std::shared_ptr<void>   Send(unsigned int id, std::shared_ptr<void> param = std::shared_ptr<void>(nullptr));
+    std::shared_ptr<void>   Send(const CoroutinePtr& pCrt, std::shared_ptr<void> param = std::shared_ptr<void>(nullptr));
+    static std::shared_ptr<void> Yield(const std::shared_ptr<void>& = std::shared_ptr<void>(nullptr));
 
     ~CoroutineMgr();
 
