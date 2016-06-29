@@ -8,11 +8,11 @@ A python like coroutine implementation in C++11.
 * Linux or Windows
 
 ## Principle
- linux: Use `swapcontext`, please `man makecontext`.
- windows: the fiber API. See [MSDN](https://msdn.microsoft.com/en-us/library/windows/desktop/ms682661(v=vs.85).aspx) for details.
+* linux: Use `swapcontext`, please `man makecontext`.
+* windows: the fiber API. See [MSDN](https://msdn.microsoft.com/en-us/library/windows/desktop/ms682661(v=vs.85).aspx) for details.
 
- ## Code example
- ```c++
+## Code example
+```c++
 
 // A coroutine: simply twice the input integer and return
 void Double(const std::shared_ptr<void>& inParams, std::shared_ptr<void>& outParams)
@@ -52,6 +52,5 @@ int main()
     return 0;
 }
 
- ```
-
+```
 
