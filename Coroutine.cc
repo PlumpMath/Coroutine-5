@@ -82,7 +82,7 @@ std::shared_ptr<void> Coroutine::_Send(Coroutine* pCrt, std::shared_ptr<void> pa
     }
 
 #else
-    ::SendFiber(pCrt->m_handle);
+    ::SwitchToFiber(pCrt->m_handle);
 
 #endif
 
