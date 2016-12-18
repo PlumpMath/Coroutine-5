@@ -38,13 +38,17 @@ class Coroutine
     };
 
 public:
+    // !!!
+    // NEVER define coroutine object, please use CoroutineMgr::CreateCoroutine.
+    // Coroutine constructor should be private, 
+    // BUT compilers demand template constructor must be public...
     explicit
     Coroutine(std::size_t stackSize = 0);
 
     // if F return void
     template <typename F, typename... Args, 
               typename = typename std::enable_if<std::is_void<typename std::result_of<F (Args...)>::type>::value, void>::type, typename Dummy = void>
-    Coroutine(F&& f, Args&&... args) : Coroutine(0)
+    Coroutine(F&& f, Args&&... args) : Coroutine()
     {
         auto temp = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
         func_ =  [temp] () { (void)temp(); };
@@ -53,7 +57,7 @@ public:
     // if F return non-void
     template <typename F, typename... Args, 
               typename = typename std::enable_if<!std::is_void<typename std::result_of<F (Args...)>::type>::value, void>::type>
-    Coroutine(F&& f, Args&&... args) : Coroutine(0)
+    Coroutine(F&& f, Args&&... args) : Coroutine()
     {
         using ResultType = typename std::result_of<F (Args...)>::type;
 
@@ -65,6 +69,7 @@ public:
     }
 
     ~Coroutine();
+
     // no copyable
     Coroutine(const Coroutine&) = delete;
     void operator=(const Coroutine&) = delete;
@@ -82,7 +87,7 @@ private:
 
     unsigned int id_;  // 1: main
     int state_;
-    std::shared_ptr<void> outParams_;
+    AnyPointer yieldValue;
 
 #if defined(__gnu_linux__)
     typedef ucontext HANDLE;

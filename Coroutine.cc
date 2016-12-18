@@ -9,8 +9,8 @@ using std::cerr;
 using std::endl; // for test
 
 unsigned int Coroutine::sid_ = 0;
-Coroutine    Coroutine::main_;
-Coroutine*   Coroutine::current_ = 0;
+Coroutine Coroutine::main_;
+Coroutine* Coroutine::current_ = 0;
 
 
 Coroutine::Coroutine(std::size_t size) :
@@ -73,23 +73,26 @@ AnyPointer Coroutine::_Send(Coroutine* crt, AnyPointer param)
     {
         // just behave like python's generator
         if (crt->state_ == State_init)
-            throw std::runtime_error("Can't send non-void value to a just-started coroutine");
+            throw std::runtime_error("Can't send non-void value to a just-created coroutine");
 
-        // set old coroutine's out param
-        this->outParams_ = std::move(param);
+        // set old coroutine's yield value
+        this->yieldValue = std::move(param);
     }
 
 #if defined(__gnu_linux__) || defined(__APPLE__)
     int ret = ::swapcontext(&handle_, &crt->handle_);
     if (ret != 0)
+    {
         perror("FATAL ERROR: swapcontext");
+        throw std::runtime_error("FATAL ERROR: swapcontext failed");
+    }
 
 #else
     ::SwitchToFiber(crt->handle_);
 
 #endif
 
-    return  crt->outParams_;
+    return crt->yieldValue;
 }
 
 AnyPointer Coroutine::_Yield(const AnyPointer& param)
@@ -117,27 +120,21 @@ void Coroutine::_Run(Coroutine* crt)
     crt->_Yield(crt->result_);
 }
 
-#if 0
-CoroutinePtr  CoroutineMgr::CreateCoroutine(const Coroutine::Function& func) 
-{
-    return  CoroutinePtr(new Coroutine(func)); 
-}
-#endif
 
 CoroutinePtr  CoroutineMgr::_FindCoroutine(unsigned int id) const
 {
     CoroutineMap::const_iterator  it(coroutines_.find(id));
 
     if (it != coroutines_.end())
-        return  it->second;
+        return it->second;
 
-    return  CoroutinePtr();
+    return CoroutinePtr();
 }
 
 AnyPointer CoroutineMgr::Send(unsigned int id, AnyPointer param)
 {
     assert (id != Coroutine::main_.id_);
-    return  Send(_FindCoroutine(id), param);
+    return Send(_FindCoroutine(id), param);
 }
 
 AnyPointer CoroutineMgr::Send(const CoroutinePtr& crt, AnyPointer param)
@@ -156,7 +153,7 @@ AnyPointer CoroutineMgr::Send(const CoroutinePtr& crt, AnyPointer param)
 #endif
     }
 
-    return  Coroutine::current_->_Send(crt.get(), param);
+    return Coroutine::current_->_Send(crt.get(), param);
 }
 
 AnyPointer CoroutineMgr::Yield(const AnyPointer& param)
