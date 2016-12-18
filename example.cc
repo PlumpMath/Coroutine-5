@@ -9,10 +9,9 @@ using std::endl; // for test
 
 
 // A coroutine: simply twice the input integer and return
-void Double(const std::shared_ptr<void>& inParams, std::shared_ptr<void>& outParams)
+int Double(int input)
 {
-    int input = *std::static_pointer_cast<int>(inParams);
-    cerr << "Coroutine Double: got input params "
+    cerr << "Coroutine Double: got input "
          << input
          << endl;
 
@@ -25,10 +24,10 @@ void Double(const std::shared_ptr<void>& inParams, std::shared_ptr<void>& outPar
         << *std::static_pointer_cast<std::string>(rsp) << "\""
         << endl; 
 
-    // double the input
-    outParams = std::make_shared<int>(input * 2);
-
     cerr << "Exit " << __FUNCTION__ << endl;
+
+    // twice the input
+    return input * 2;
 }
 
 
@@ -36,15 +35,16 @@ void Double(const std::shared_ptr<void>& inParams, std::shared_ptr<void>& outPar
 int main()
 {
     //0. define CoroutineMgr object for each thread.  
-    CoroutineMgr   mgr; 
+    CoroutineMgr mgr; 
+
+    const int input = 42;
 
     //1. create coroutine
-    CoroutinePtr  crt(mgr.CreateCoroutine(Double));
+    CoroutinePtr  crt(mgr.CreateCoroutine(Double, input));
         
-    //2. jump to crt1, get result from crt1
-    const int input = 42;
-    auto pRet = mgr.Send(crt, std::make_shared<int>(input));
-    cerr << "Main func: got reply message \"" << *std::static_pointer_cast<std::string>(pRet).get() << "\""<< endl;
+    //2. start crt, get result from crt
+    auto ret = mgr.Send(crt);
+    cerr << "Main func: got reply message \"" << *std::static_pointer_cast<std::string>(ret).get() << "\""<< endl;
 
     //3. got the final result: 84
     auto finalResult = mgr.Send(crt, std::make_shared<std::string>("Please be quick, I am waiting for your result"));
@@ -52,3 +52,4 @@ int main()
         
     cerr << "BYE BYE\n";
 }
+
