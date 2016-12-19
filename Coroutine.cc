@@ -13,7 +13,11 @@ Coroutine Coroutine::main_;
 Coroutine* Coroutine::current_ = 0;
 
 
+#if defined(__gnu_linux__) || defined(__APPLE__)
 Coroutine::Coroutine(std::size_t size) :
+#else
+Coroutine::Coroutine() :
+#endif
     id_( ++ sid_),
     state_(State_init)
 #if defined(__gnu_linux__) || defined(__APPLE__)
@@ -72,7 +76,7 @@ AnyPointer Coroutine::_Send(Coroutine* crt, AnyPointer param)
     if (param)
     {
         // just behave like python's generator
-        if (crt->state_ == State_init)
+        if (crt->state_ == State_init && crt != &Coroutine::main_)
             throw std::runtime_error("Can't send non-void value to a just-created coroutine");
 
         // set old coroutine's yield value
