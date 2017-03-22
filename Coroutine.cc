@@ -55,8 +55,17 @@ Coroutine::~Coroutine()
 {
     cerr << "delete coroutine " << id_ << endl;
 
-#if !defined(__gnu_linux__) && !defined(__APPLE__)
-    if (handle_ != INVALID_HANDLE_VALUE)
+#if defined(_WIN32)
+    if (handle_ == INVALID_HANDLE_VALUE)
+        return;
+
+    if (::GetCurrentFiber() == Coroutine::main_.handle_)
+    {
+        cerr << "Destroy main fiber\n";
+        ::ConvertFiberToThread();
+        Coroutine::main_.handle_ = INVALID_HANDLE_VALUE;
+    }
+    else
     {
         ::DeleteFiber(handle_);
         handle_ = INVALID_HANDLE_VALUE;
@@ -96,7 +105,7 @@ AnyPointer Coroutine::_Send(Coroutine* crt, AnyPointer param)
 
 #endif
 
-    return crt->yieldValue;
+    return std::move(crt->yieldValue); // only return once
 }
 
 AnyPointer Coroutine::_Yield(const AnyPointer& param)
@@ -109,7 +118,7 @@ void Coroutine::_Run(Coroutine* crt)
     assert (&Coroutine::main_ != crt);
     assert (Coroutine::current_ == crt);
 
-    cerr << "\n=========== Start croutine id "
+    cerr << "\n=========== Start coroutine id "
          << crt->GetID() << endl;
 
     crt->state_ = State_running;
@@ -117,7 +126,7 @@ void Coroutine::_Run(Coroutine* crt)
     if (crt->func_)
         crt->func_();
 
-    cerr << "=========== Finish croutine id "
+    cerr << "=========== Finish coroutine id "
          << crt->GetID() << endl << endl;
 
     crt->state_ = State_finish;
@@ -125,23 +134,8 @@ void Coroutine::_Run(Coroutine* crt)
 }
 
 
-CoroutinePtr  CoroutineMgr::_FindCoroutine(unsigned int id) const
-{
-    CoroutineMap::const_iterator  it(coroutines_.find(id));
 
-    if (it != coroutines_.end())
-        return it->second;
-
-    return CoroutinePtr();
-}
-
-AnyPointer CoroutineMgr::Send(unsigned int id, AnyPointer param)
-{
-    assert (id != Coroutine::main_.id_);
-    return Send(_FindCoroutine(id), param);
-}
-
-AnyPointer CoroutineMgr::Send(const CoroutinePtr& crt, AnyPointer param)
+AnyPointer Coroutine::Send(const CoroutinePtr& crt, AnyPointer param)
 {
     if (crt->state_ == Coroutine::State_finish) {
         throw std::runtime_error("Send to a finished coroutine.");
@@ -151,7 +145,7 @@ AnyPointer CoroutineMgr::Send(const CoroutinePtr& crt, AnyPointer param)
     {
         Coroutine::current_ = &Coroutine::main_;
 
-#if !defined(__gnu_linux__) && !defined(__APPLE__)
+#if defined(_WIN32)
         Coroutine::main_.handle_ = ::ConvertThreadToFiberEx(&Coroutine::main_, FIBER_FLAG_FLOAT_SWITCH);
 
 #endif
@@ -160,26 +154,8 @@ AnyPointer CoroutineMgr::Send(const CoroutinePtr& crt, AnyPointer param)
     return Coroutine::current_->_Send(crt.get(), param);
 }
 
-AnyPointer CoroutineMgr::Yield(const AnyPointer& param)
+AnyPointer Coroutine::Yield(const AnyPointer& param)
 {
     return Coroutine::current_->_Yield(param);
-}
-
-
-CoroutineMgr::~CoroutineMgr()
-{
-#if !defined(__gnu_linux__) && !defined(__APPLE__)
-    if (::GetCurrentFiber() == Coroutine::main_.handle_)
-    {
-        cerr << "Destroy main fiber\n";
-        ::ConvertFiberToThread();
-        Coroutine::main_.handle_ = INVALID_HANDLE_VALUE;
-    }
-    else
-    {
-        cerr << "What fucking happened???\n";
-    }
-
-#endif
 }
 

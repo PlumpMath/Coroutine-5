@@ -26,6 +26,9 @@
     
 using AnyPointer = std::shared_ptr<void>;
 
+class Coroutine;
+using CoroutinePtr = std::shared_ptr<Coroutine>;
+
 class Coroutine
 {
     friend class CoroutineMgr;
@@ -36,6 +39,19 @@ class Coroutine
         State_running,
         State_finish,
     };
+
+public:
+    // works like python decorator: convert the func to a coroutine
+    template <typename F, typename... Args>
+    static CoroutinePtr
+        CreateCoroutine(F&& f, Args&&... args)
+    {
+        return std::make_shared<Coroutine>(std::forward<F>(f), std::forward<Args>(args)...);
+    }
+
+    // like python generator's send method
+    static AnyPointer Send(const CoroutinePtr& pCrt, AnyPointer = AnyPointer(nullptr));
+    static AnyPointer Yield(const AnyPointer& = AnyPointer(nullptr));
 
 public:
     // !!!
@@ -127,32 +143,6 @@ private:
     static unsigned int sid_;
 };
 
-using CoroutinePtr = std::shared_ptr<Coroutine>;
-
-class CoroutineMgr
-{
-public:
-    // works like python decorator: convert the func to a coroutine
-    template <typename F, typename... Args>
-    static CoroutinePtr
-    CreateCoroutine(F&& f, Args&&... args)
-    {
-        return std::make_shared<Coroutine>(std::forward<F>(f), std::forward<Args>(args)...); 
-    }
-
-    // like python generator's send method
-    AnyPointer Send(unsigned int id, AnyPointer param = AnyPointer(nullptr));
-    AnyPointer Send(const CoroutinePtr& pCrt, AnyPointer = AnyPointer(nullptr));
-    static AnyPointer Yield(const AnyPointer& = AnyPointer(nullptr));
-
-    ~CoroutineMgr();
-
-private:
-    CoroutinePtr _FindCoroutine(unsigned int id) const;
-
-    using CoroutineMap = std::map<unsigned int, CoroutinePtr >;
-    CoroutineMap coroutines_;
-};
 
 #endif
 
